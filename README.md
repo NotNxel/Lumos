@@ -1,1 +1,1 @@
-# WaveFlux
+# Lumos
