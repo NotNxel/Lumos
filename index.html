@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LUMOS Hand Visualizer</title>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        @keyframes pulseGlow {
+            0%, 100% { opacity: 0.3; }
+            50% { opacity: 0.7; }
+        }
+
+        @keyframes scanline {
+            0% { transform: translateY(-100%); }
+            100% { transform: translateY(100vh); }
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+        }
+
+        @keyframes gradientShift {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        body {
+            font-family: 'Orbitron', monospace;
+            background: #000000;
+            min-height: 100vh;
+            overflow: hidden;
+            color: #00ffff;
+            position: relative;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                radial-gradient(circle at 20% 50%, rgba(138, 43, 226, 0.15) 0%, transparent 50%),
+                radial-gradient(circle at 80% 50%, rgba(0, 255, 255, 0.15) 0%, transparent 50%),
+                radial-gradient(circle at 50% 50%, rgba(255, 0, 255, 0.08) 0%, transparent 70%);
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        body::after {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background: linear-gradient(90deg, transparent, #00ffff, transparent);
+            box-shadow: 0 0 20px #00ffff;
+            animation: scanline 4s linear infinite;
+            pointer-events: none;
+            z-index: 100;
+            opacity: 0.3;
+        }
+
+        #output {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: #000000;
+            z-index: 0;
+        }
+
+        video {
+            display: none;
+        }
+
+        .header {
+            position: fixed;
+            top: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            text-align: center;
+            z-index: 10;
+            pointer-events: none;
+            animation: float 3s ease-in-out infinite;
+        }
+
+        .title {
+            font-size: 48px;
+            font-weight: 900;
+            letter-spacing: 8px;
+            background: linear-gradient(45deg, #00ffff, #ff00ff, #00ffff);
+            background-size: 200% 200%;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            filter: drop-shadow(0 0 30px rgba(0, 255, 255, 0.8)) drop-shadow(0 0 60px rgba(255, 0, 255, 0.6));
+            margin-bottom: 12px;
+            animation: gradientShift 3s ease infinite;
+        }
+
+        .subtitle {
+            font-size: 13px;
+            color: #888;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 40px;
+            left: 40px;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+            background: rgba(10, 10, 26, 0.8);
+            padding: 25px;
+            border-radius: 12px;
+            border: 1px solid rgba(0, 255, 255, 0.3);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), inset 0 0 20px rgba(0, 255, 255, 0.1);
+        }
+
+        button {
+            padding: 14px 28px;
+            border: 2px solid transparent;
+            background: linear-gradient(#0a0a1a, #0a0a1a) padding-box,
+                        linear-gradient(135deg, #00ffff, #ff00ff) border-box;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+            color: #00ffff;
+            font-family: 'Orbitron', monospace;
+            letter-spacing: 2px;
+            transition: all 0.3s;
+            text-transform: uppercase;
+            position: relative;
+            overflow: hidden;
+        }
+
+        button::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(0, 255, 255, 0.4), transparent);
+            transition: left 0.5s;
+        }
+
+        button:hover::before {
+            left: 100%;
+        }
+
+        button:hover {
+            box-shadow: 0 0 30px rgba(0, 255, 255, 0.6), 0 0 60px rgba(255, 0, 255, 0.4);
+            transform: translateY(-2px);
+        }
+
+        .slider-container {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .slider-label {
+            font-size: 11px;
+            letter-spacing: 1.5px;
+            color: #00ffff;
+            text-transform: uppercase;
+            text-shadow: 0 0 8px rgba(0, 255, 255, 0.5);
+        }
+
+        input[type="range"] {
+            width: 100%;
+            height: 6px;
+            background: linear-gradient(90deg, rgba(0, 255, 255, 0.2), rgba(255, 0, 255, 0.2));
+            border-radius: 3px;
+            outline: none;
+            -webkit-appearance: none;
+            position: relative;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 20px;
+            height: 20px;
+            background: linear-gradient(135deg, #00ffff, #ff00ff);
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 0 15px #00ffff, 0 0 30px #ff00ff;
+            transition: all 0.2s;
+        }
+
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+            box-shadow: 0 0 25px #00ffff, 0 0 50px #ff00ff;
+        }
+
+        input[type="range"]::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            background: linear-gradient(135deg, #00ffff, #ff00ff);
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 0 15px #00ffff, 0 0 30px #ff00ff;
+            border: none;
+        }
+
+        .status {
+            position: fixed;
+            bottom: 40px;
+            right: 40px;
+            z-index: 10;
+            text-align: right;
+            font-size: 11px;
+            letter-spacing: 1.5px;
+            background: rgba(10, 10, 26, 0.8);
+            padding: 20px 25px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 0, 255, 0.3);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), inset 0 0 20px rgba(255, 0, 255, 0.1);
+        }
+
+        .status-line {
+            margin-bottom: 10px;
+            opacity: 0.9;
+            text-transform: uppercase;
+        }
+
+        .status-value {
+            color: #ff00ff;
+            font-weight: 700;
+            text-shadow: 0 0 10px rgba(255, 0, 255, 0.8);
+        }
+
+        .shape-indicator {
+            font-size: 22px;
+            font-weight: 900;
+            background: linear-gradient(45deg, #ff00ff, #00ffff);
+            background-size: 200% 200%;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-top: 15px;
+            transition: all 0.3s;
+            filter: drop-shadow(0 0 15px rgba(255, 0, 255, 0.8));
+            animation: gradientShift 3s ease infinite;
+        }
+
+        .shape-indicator.changing {
+            font-size: 28px;
+            filter: drop-shadow(0 0 30px rgba(255, 0, 255, 1)) drop-shadow(0 0 60px rgba(0, 255, 255, 1));
+            animation: pulseGlow 0.3s ease-in-out, gradientShift 3s ease infinite;
+        }
+
+        .loading {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 100;
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: 3px;
+            background: linear-gradient(45deg, #00ffff, #ff00ff);
+            background-size: 200% 200%;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            filter: drop-shadow(0 0 20px rgba(0, 255, 255, 0.8));
+            animation: pulseGlow 1.5s ease-in-out infinite, gradientShift 3s ease infinite;
+        }
+
+        .grid-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: 
+                linear-gradient(rgba(0, 255, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 255, 255, 0.03) 1px, transparent 1px);
+            background-size: 50px 50px;
+            pointer-events: none;
+            z-index: 2;
+        }
+
+        .corner-decoration {
+            position: fixed;
+            width: 100px;
+            height: 100px;
+            border: 2px solid rgba(0, 255, 255, 0.3);
+            z-index: 5;
+            pointer-events: none;
+        }
+
+        .corner-tl {
+            top: 20px;
+            left: 20px;
+            border-right: none;
+            border-bottom: none;
+            box-shadow: -5px -5px 20px rgba(0, 255, 255, 0.2);
+        }
+
+        .corner-tr {
+            top: 20px;
+            right: 20px;
+            border-left: none;
+            border-bottom: none;
+            box-shadow: 5px -5px 20px rgba(255, 0, 255, 0.2);
+        }
+
+        .corner-bl {
+            bottom: 20px;
+            left: 20px;
+            border-right: none;
+            border-top: none;
+            box-shadow: -5px 5px 20px rgba(0, 255, 255, 0.2);
+        }
+
+        .corner-br {
+            bottom: 20px;
+            right: 20px;
+            border-left: none;
+            border-top: none;
+            box-shadow: 5px 5px 20px rgba(255, 0, 255, 0.2);
+        }
+    </style>
+</head>
+<body>
+    <div class="grid-overlay"></div>
+    <div class="corner-decoration corner-tl"></div>
+    <div class="corner-decoration corner-tr"></div>
+    <div class="corner-decoration corner-bl"></div>
+    <div class="corner-decoration corner-br"></div>
+
+    <div class="header">
+        <div class="title">LUMOS</div>
+        <div class="subtitle">Neural Hand Sculpting Interface</div>
+    </div>
+
+    <canvas id="output"></canvas>
+
+    <div class="controls">
+        <button id="trackingBtn" onclick="toggleTracking()">Initiate Tracking</button>
+        
+        <div class="slider-container">
+            <span class="slider-label">Luminosity</span>
+            <input type="range" id="glowSlider" min="0" max="100" value="70" oninput="updateGlow(this.value)">
+        </div>
+        
+        <div class="slider-container">
+            <span class="slider-label">Distortion</span>
+            <input type="range" id="deformSlider" min="0" max="100" value="50" oninput="updateDeform(this.value)">
+        </div>
+        
+        <div class="slider-container">
+            <span class="slider-label">Sensitivity</span>
+            <input type="range" id="sensitivitySlider" min="1" max="100" value="30" oninput="updateSensitivity(this.value)">
+        </div>
+    </div>
+
+    <div class="status">
+        <div class="status-line">STATUS: <span class="status-value" id="trackingStatus">OFFLINE</span></div>
+        <div class="status-line">NEURAL: <span class="status-value" id="handStatus">IDLE</span></div>
+        <div class="shape-indicator" id="shapeIndicator">MORPHOLOGY: SPHERE</div>
+    </div>
+
+    <div class="loading" id="loading">INITIALIZING NEURAL INTERFACE...</div>
+
+    <video id="video" playsinline></video>
+
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('output');
+        const ctx = canvas.getContext('2d');
+        const loading = document.getElementById('loading');
+        const shapeIndicator = document.getElementById('shapeIndicator');
+
+        // Set canvas to full screen
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+
+        // Global settings
+        let glowIntensity = 0.7;
+        let deformIntensity = 0.5;
+        let shapeSensitivity = 0.3;
+        let isTracking = false;
+
+        // Shape modes - CHANGED TO SPHERE, TORUS, CUBE, TUBE
+        const SHAPES = ['SPHERE', 'TORUS', 'CUBE', 'TUBE'];
+        let currentShapeIndex = 0;
+        let currentShape = SHAPES[currentShapeIndex];
+
+        // Hand tracking state
+        let handPosition = { x: 0.5, y: 0.5 };
+        let fingerSpread = 0;
+        let rotationX = 0;
+        let rotationY = 0;
+        let lastRoll = 0;
+        let threeFingerMode = false;
+        let shapeSwitchLocked = false;
+
+        // Cube particles
+        let cubes = [];
+        const CUBE_COUNT = 1000;
+
+        // Particle/Cube class
+        class Cube {
+            constructor(index, total, shapeType) {
+                this.index = index;
+                this.total = total;
+                this.basePos = { x: 0, y: 0, z: 0 };
+                this.pos = { x: 0, y: 0, z: 0 };
+                this.size = 4;
+                this.hue = 180 + Math.random() * 60; // Cyan to purple range
+                this.alpha = 1;
+                this.initPosition(shapeType);
+            }
+
+            initPosition(shapeType) {
+                switch(shapeType) {
+                    case 'SPHERE':
+                        // Uniform distribution on sphere surface
+                        const theta = Math.acos(2 * Math.random() - 1);
+                        const phi = Math.random() * Math.PI * 2;
+                        const radius = 150;
+                        this.basePos.x = radius * Math.sin(theta) * Math.cos(phi);
+                        this.basePos.y = radius * Math.sin(theta) * Math.sin(phi);
+                        this.basePos.z = radius * Math.cos(theta);
+                        break;
+
+                    case 'TORUS':
+                        const angle = (this.index / this.total) * Math.PI * 2;
+                        const ringRadius = 150;
+                        const tubeRadius = 50;
+                        const tubeAngle = Math.random() * Math.PI * 2;
+                        this.basePos.x = (ringRadius + tubeRadius * Math.cos(tubeAngle)) * Math.cos(angle);
+                        this.basePos.y = tubeRadius * Math.sin(tubeAngle);
+                        this.basePos.z = (ringRadius + tubeRadius * Math.cos(tubeAngle)) * Math.sin(angle);
+                        break;
+
+                    case 'CUBE':
+                        const cubeSize = 180;
+                        const gridSize = Math.ceil(Math.cbrt(this.total));
+                        const x = (this.index % gridSize) / gridSize - 0.5;
+                        const y = (Math.floor(this.index / gridSize) % gridSize) / gridSize - 0.5;
+                        const z = (Math.floor(this.index / (gridSize * gridSize)) % gridSize) / gridSize - 0.5;
+                        this.basePos.x = x * cubeSize;
+                        this.basePos.y = y * cubeSize;
+                        this.basePos.z = z * cubeSize;
+                        break;
+
+                    case 'TUBE':
+                        const t = this.index / this.total;
+                        const tubeT = (this.index % 100) / 100;
+                        const tubeCircleAngle = tubeT * Math.PI * 2;
+                        const tubeRad = 60;
+                        const tubeHeight = 300;
+                        this.basePos.x = tubeRad * Math.cos(tubeCircleAngle);
+                        this.basePos.y = (t - 0.5) * tubeHeight;
+                        this.basePos.z = tubeRad * Math.sin(tubeCircleAngle);
+                        break;
+                }
+            }
+
+            update(rotX, rotY, spread, pulse) {
+                // Apply deformation based on finger spread
+                const deform = spread * deformIntensity;
+                const noise = Math.sin(Date.now() * 0.001 + this.index * 0.1) * 20 * deform;
+                
+                this.pos.x = this.basePos.x + noise;
+                this.pos.y = this.basePos.y + noise * 0.5;
+                this.pos.z = this.basePos.z + noise * 0.3;
+
+                // Apply rotation
+                let x = this.pos.x;
+                let y = this.pos.y;
+                let z = this.pos.z;
+
+                // Rotate Y
+                const cosY = Math.cos(rotY);
+                const sinY = Math.sin(rotY);
+                const tempX = x * cosY - z * sinY;
+                z = x * sinY + z * cosY;
+                x = tempX;
+
+                // Rotate X
+                const cosX = Math.cos(rotX);
+                const sinX = Math.sin(rotX);
+                const tempY = y * cosX - z * sinX;
+                z = y * sinX + z * cosX;
+                y = tempY;
+
+                this.pos.x = x;
+                this.pos.y = y;
+                this.pos.z = z;
+
+                // Pulse effect
+                if (pulse > 0) {
+                    this.size = 4 + pulse * 3;
+                } else {
+                    this.size = 4;
+                }
+            }
+
+            draw(ctx, centerX, centerY) {
+                const scale = 500 / (500 + this.pos.z);
+                const x2d = centerX + this.pos.x * scale;
+                const y2d = centerY + this.pos.y * scale;
+                const size = this.size * scale;
+
+                // Depth-based alpha
+                this.alpha = Math.max(0.3, Math.min(1, (this.pos.z + 300) / 600));
+
+                const brightness = 50 + glowIntensity * 50;
+                ctx.fillStyle = `hsla(${this.hue}, 100%, ${brightness}%, ${this.alpha})`;
+                ctx.shadowBlur = glowIntensity * 25;
+                ctx.shadowColor = `hsl(${this.hue}, 100%, ${brightness}%)`;
+                
+                ctx.beginPath();
+                ctx.arc(x2d, y2d, size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // Initialize cubes
+        function initCubes(shapeType) {
+            cubes = [];
+            for (let i = 0; i < CUBE_COUNT; i++) {
+                cubes.push(new Cube(i, CUBE_COUNT, shapeType));
+            }
+        }
+
+        // Initialize with sphere
+        initCubes('SPHERE');
+
+        // Pulse effect
+        let pulseValue = 0;
+
+        // Gesture detection
+        function detectThreeFingerExtended(landmarks) {
+            const indexExtended = landmarks[8].y < landmarks[6].y;
+            const middleExtended = landmarks[12].y < landmarks[10].y;
+            const ringExtended = landmarks[16].y < landmarks[14].y;
+            
+            return indexExtended && middleExtended && ringExtended;
+        }
+
+        function getHandRoll(landmarks) {
+            const wrist = landmarks[0];
+            const middleBase = landmarks[9];
+            const indexBase = landmarks[5];
+            
+            const rollX = indexBase.x - wrist.x;
+            const rollY = indexBase.y - wrist.y;
+            
+            return Math.atan2(rollY, rollX);
+        }
+
+        function detectPinch(landmarks) {
+            const thumbTip = landmarks[4];
+            const indexTip = landmarks[8];
+            const distance = Math.sqrt(
+                Math.pow(indexTip.x - thumbTip.x, 2) + 
+                Math.pow(indexTip.y - thumbTip.y, 2)
+            );
+            return distance < 0.05;
+        }
+
+        function getFingerSpread(landmarks) {
+            let totalDist = 0;
+            const fingerTips = [4, 8, 12, 16, 20];
+            for (let i = 0; i < fingerTips.length - 1; i++) {
+                const dist = Math.sqrt(
+                    Math.pow(landmarks[fingerTips[i]].x - landmarks[fingerTips[i+1]].x, 2) +
+                    Math.pow(landmarks[fingerTips[i]].y - landmarks[fingerTips[i+1]].y, 2)
+                );
+                totalDist += dist;
+            }
+            return Math.min(1, totalDist * 3);
+        }
+
+        // Shape switching
+        function switchShape(direction) {
+            if (shapeSwitchLocked) return;
+            
+            shapeSwitchLocked = true;
+            currentShapeIndex = (currentShapeIndex + direction + SHAPES.length) % SHAPES.length;
+            currentShape = SHAPES[currentShapeIndex];
+            
+            shapeIndicator.textContent = `MORPHOLOGY: ${currentShape}`;
+            shapeIndicator.classList.add('changing');
+            
+            // Reinitialize cubes with new shape
+            initCubes(currentShape);
+            
+            setTimeout(() => {
+                shapeIndicator.classList.remove('changing');
+            }, 500);
+            
+            setTimeout(() => {
+                shapeSwitchLocked = false;
+            }, 300);
+        }
+
+        // Hand tracking callback
+        function onResults(results) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0];
+                
+                document.getElementById('handStatus').textContent = 'ACTIVE';
+                
+                // Get hand position
+                const palm = landmarks[9];
+                handPosition.x = 1 - palm.x;
+                handPosition.y = palm.y;
+                
+                // Update rotation based on hand position
+                rotationY = (handPosition.x - 0.5) * Math.PI;
+                rotationX = (handPosition.y - 0.5) * Math.PI;
+                
+                // Get finger spread
+                fingerSpread = getFingerSpread(landmarks);
+                
+                // Detect pinch for pulse
+                if (detectPinch(landmarks)) {
+                    pulseValue = Math.min(1, pulseValue + 0.1);
+                }
+                
+                // Detect three-finger twist
+                const isThreeFinger = detectThreeFingerExtended(landmarks);
+                const currentRoll = getHandRoll(landmarks);
+                
+                if (isThreeFinger) {
+                    if (!threeFingerMode) {
+                        lastRoll = currentRoll;
+                        threeFingerMode = true;
+                    } else if (!shapeSwitchLocked) {
+                        let rollDiff = currentRoll - lastRoll;
+                        
+                        // Normalize angle difference
+                        while (rollDiff > Math.PI) rollDiff -= Math.PI * 2;
+                        while (rollDiff < -Math.PI) rollDiff += Math.PI * 2;
+                        
+                        // Use shapeSensitivity for threshold
+                        if (Math.abs(rollDiff) > shapeSensitivity) {
+                            switchShape(rollDiff > 0 ? 1 : -1);
+                            lastRoll = currentRoll;
+                        }
+                    }
+                } else {
+                    if (threeFingerMode) {
+                        threeFingerMode = false;
+                        shapeSwitchLocked = false;
+                    }
+                }
+            } else {
+                document.getElementById('handStatus').textContent = 'IDLE';
+            }
+
+            // Decay pulse
+            pulseValue *= 0.9;
+
+            // Update and draw cubes
+            cubes.forEach(cube => {
+                cube.update(rotationX, rotationY, fingerSpread, pulseValue);
+            });
+
+            // Sort by Z for proper depth
+            cubes.sort((a, b) => a.pos.z - b.pos.z);
+
+            cubes.forEach(cube => {
+                cube.draw(ctx, centerX, centerY);
+            });
+
+            ctx.shadowBlur = 0;
+        }
+
+        // Initialize MediaPipe Hands
+        const hands = new Hands({
+            locateFile: (file) => {
+                return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+            }
+        });
+
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+
+        hands.onResults(onResults);
+
+        let camera;
+
+        function toggleTracking() {
+            if (!isTracking) {
+                camera = new Camera(video, {
+                    onFrame: async () => {
+                        await hands.send({image: video});
+                    },
+                    width: 1280,
+                    height: 720
+                });
+
+                camera.start().then(() => {
+                    loading.style.display = 'none';
+                    isTracking = true;
+                    document.getElementById('trackingBtn').textContent = 'TERMINATE TRACKING';
+                    document.getElementById('trackingStatus').textContent = 'ONLINE';
+                });
+            } else {
+                if (camera) {
+                    camera.stop();
+                }
+                isTracking = false;
+                document.getElementById('trackingBtn').textContent = 'INITIATE TRACKING';
+                document.getElementById('trackingStatus').textContent = 'OFFLINE';
+            }
+        }
+
+        function updateGlow(value) {
+            glowIntensity = value / 100;
+        }
+
+        function updateDeform(value) {
+            deformIntensity = value / 100;
+        }
+
+        function updateSensitivity(value) {
+            // Lower value = higher sensitivity (smaller angle needed)
+            shapeSensitivity = (101 - value) / 200; // Range from 0.005 to 0.5
+        }
+
+        // Animation loop for idle state
+        function animate() {
+            if (!isTracking) {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                const centerX = canvas.width / 2;
+                const centerY = canvas.height / 2;
+                
+                rotationY += 0.005;
+                
+                cubes.forEach(cube => {
+                    cube.update(rotationX, rotationY, 0, 0);
+                });
+                
+                cubes.sort((a, b) => a.pos.z - b.pos.z);
+                
+                cubes.forEach(cube => {
+                    cube.draw(ctx, centerX, centerY);
+                });
+                
+                ctx.shadowBlur = 0;
+            }
+            
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+    </script>
+</body>
+</html>
